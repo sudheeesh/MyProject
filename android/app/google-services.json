@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "843034044629",
+    "project_id": "caspmobile-e022b",
+    "storage_bucket": "caspmobile-e022b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:843034044629:android:5dec4b37bbac8112ee1a5c",
+        "android_client_info": {
+          "package_name": "com.myproject"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7ro6W_hzArh_8221auv-G7ZuilrK7WqA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

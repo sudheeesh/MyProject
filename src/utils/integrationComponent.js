@@ -1,0 +1,80 @@
+export const integrationComponents = (hash, resource, username) => [
+  {
+    title: "Gmail",
+    type: "GoogleGmail",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/4/4e/Gmail_Icon.png",
+    openPopupUrl: `https://whitecel.com/test/gmail/auth/login?uid_hash=${hash}&scopes=mail&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Google Drive",
+    type: "GoogleDrive",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo.png",
+    openPopupUrl: `https://whitecel.com/test/gmail/auth/login?uid_hash=${hash}&scopes=drive&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Slack",
+    type: "Slack",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/7/76/Slack_Icon.png",
+    openPopupUrl: `https://whitecel.com/test/slack/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Notion",
+    type: "Notion",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg",
+    openPopupUrl: `https://whitecel.com/test/notion/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Outlook",
+    type: "AzureOutlook",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/0/0b/Microsoft_Office_Outlook_%282018–present%29.svg",
+    openPopupUrl: `https://whitecel.com/test/outlook/auth/login?uid_hash=${hash}&scopes=openid,profile,mail_read&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Jira",
+    type: "Jira",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/8/8e/Jira_Logo.svg",
+    openPopupUrl: `https://whitecel.com/test/atlassian/auth/login?uid_hash=${hash}&scopes=jira&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Confluence",
+    type: "Confluence",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/e/e7/Confluence-blue.svg",
+    openPopupUrl: `https://whitecel.com/test/atlassian/auth/login?uid_hash=${hash}&scopes=confluence&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "OneDrive",
+    type: "AzureOneDrive",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/4/4e/Microsoft_Office_OneDrive_%282019–present%29.svg",
+    openPopupUrl: `https://whitecel.com/test/outlook/auth/login?uid_hash=${hash}&scopes=openid,profile,files_read,sites_read_all,calendar&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Microsoft Teams",
+    type: "MicrosoftTeams",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/9/90/Microsoft_Office_Teams_%282018–present%29.svg",
+    openPopupUrl: `https://whitecel.com/test/teams/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "HubSpot",
+    type: "HubSpot",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/3/3a/HubSpot_Logo.svg",
+    openPopupUrl: `https://whitecel.com/test/hubspot/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Google Calendar",
+    type: "GoogleCalendar",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg",
+    openPopupUrl: `https://whitecel.com/test/gmail/auth/login?uid_hash=${hash}&scopes=calendar&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Dropbox Business",
+    type: "DropboxBusiness",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/7/78/Dropbox_Icon.svg",
+    openPopupUrl: `https://whitecel.com/test/dropbox/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+  {
+    title: "Linear",
+    type: "Linear",
+    imgSrc: "https://upload.wikimedia.org/wikipedia/commons/9/99/Linear_logo.svg",
+    openPopupUrl: `https://whitecel.com/test/linear/auth/login?uid_hash=${hash}&resource=${resource}&username=${username}`,
+  },
+];
