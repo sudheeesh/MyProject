@@ -13,16 +13,23 @@ const adminSlice = createSlice({
   initialState,
   reducers: {
     setCredentials: (state, action) => {
-      const { token, email, resource } = action.payload;
-      state.token = token;
-      state.email = email;
-      state.resource = resource;
-      state.isAuthenticated = true;
+  const { token, email, resource } = action.payload;
 
-      AsyncStorage.setItem("token", token);
-      AsyncStorage.setItem("email", email);
-      AsyncStorage.setItem("resource", resource);
-    },
+  state.token = token;
+  state.email = email || null;
+  state.resource = resource;
+  state.isAuthenticated = true;
+
+  AsyncStorage.setItem("token", token);
+  AsyncStorage.setItem("resource", resource);
+
+  if (email) {
+    AsyncStorage.setItem("email", email);
+  } else {
+    AsyncStorage.removeItem("email");
+  }
+},
+
 
     logout: (state) => {
       state.token = null;

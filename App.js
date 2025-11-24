@@ -18,7 +18,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const user = useSelector((state) => state?.auth?.user || null);
+  const user = useSelector((state) => state.admin);
 
   useEffect(() => {
     const initialize = async () => {
@@ -29,8 +29,6 @@ function AppContent() {
         if (Platform.OS === "android") {
           const permissions = [
             PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-            PermissionsAndroid.PERMISSIONS.WAKE_LOCK,
           ];
 
           const granted = await PermissionsAndroid.requestMultiple(
@@ -52,7 +50,7 @@ function AppContent() {
         // 🌐 SETUP VOIP SIGNALING DIRECTLY
         // (CallKeep removed)
         // =====================================
-        const userId = user?.id || "guest-" + Date.now();
+        const userId = user?.email || "guest-" + Date.now();
         console.log("🔗 Connecting VoIP signaling as:", userId);
         setupVoipSignal(userId);
 

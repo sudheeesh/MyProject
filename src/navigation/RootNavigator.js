@@ -1,10 +1,9 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { NavigationContainer } from "@react-navigation/native";
-import { navigationRef, navigate } from "./NavigationService";
+import { navigationRef } from "./NavigationService";
 import { useSelector } from "react-redux";
 import Toast from "react-native-toast-message";
-import messaging from "@react-native-firebase/messaging";  // NEW
 
 // Screens
 import LoginScreen from "../screens/LoginScreen";
@@ -13,41 +12,14 @@ import VoiceCallScreen from "../screens/VoiceCallScreen";
 import AddUserScreen from "../screens/AddUserScreen";
 import TalkWithAI from "../screens/TalkWithAI";
 import IncomingCallScreen from "../screens/IncomingCallScreen";
+import ChatScreen from "../screens/ChatScreen"
+import SubscriptionPlansScreen from "../account/SubscriptionPlansScreen"
+import AccountScreen from "../account/AccountScreen"
+import AssistantDetailsScreen from "../screens/AssistantDetailsScreen"
 
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-
-  useEffect(() => {
-    // Ask permission (Android 13+)
-    messaging().requestPermission();
-
-    // Register device
-    messaging().registerDeviceForRemoteMessages();
-
-    // Get FCM token (use this for backend)
-    messaging()
-      .getToken()
-      .then((token) => {
-        console.log("🔥 FCM Token:", token);
-      });
-
-    // Foreground message handler
-    const unsubscribe = messaging().onMessage(async remoteMessage => {
-      const data = remoteMessage.data;
-
-      if (data?.caller) {
-        navigate("IncomingCallScreen", {
-          callId: data.callId,
-          caller: data.caller,
-          ws_url: data.ws_url,
-        });
-      }
-    });
-
-    return unsubscribe;
-  }, []);
-
   const { isAuthenticated } = useSelector((state) => state.admin);
 
   return (
@@ -71,6 +43,12 @@ export default function RootNavigator() {
             <Stack.Screen name="TalkWithAI" component={TalkWithAI} />
             <Stack.Screen name="VoiceCallScreen" component={VoiceCallScreen} />
             <Stack.Screen name="IncomingCallScreen" component={IncomingCallScreen} />
+            <Stack.Screen name="ChatScreen" component={ChatScreen} />
+            <Stack.Screen name="Account" component={AccountScreen} />
+            <Stack.Screen name="SubscriptionPlans" component={SubscriptionPlansScreen} />
+            <Stack.Screen name="AssistantDetails" component={AssistantDetailsScreen} />
+
+
           </>
         )}
       </Stack.Navigator>
@@ -79,3 +57,4 @@ export default function RootNavigator() {
     </NavigationContainer>
   );
 }
+

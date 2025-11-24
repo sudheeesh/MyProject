@@ -1,49 +1,71 @@
-// src/call/VoIPSignal.js
-// src/call/VoIPSignal.js
 import { AppState } from "react-native";
 import uuid from "react-native-uuid";
 import { navigate } from "../navigation/NavigationService";
 
 let ws = null;
-let reconnectTimer = null;
-let retryCount = 0;
 let heartbeat = null;
 let lastPong = Date.now();
+let reconnectTimer = null;
+let retryCount = 0;
 
+let isIncomingUiShown = false;
 let activeCallId = null;
 let activeCaller = null;
-let isIncomingUiShown = false;
 
 // -------------------------------
-// CONNECT TO SIGNAL SERVER
+// CONFIG — SET YOUR LOCAL IP HERE
+// -------------------------------
+const SIGNAL_HOST = "192.168.1.2";   // <— YOUR LAPTOP IP
+const SIGNAL_PORT = "8080";
+
+// -------------------------------
+// PUBLIC: Initialize WS connection
 // -------------------------------
 export function setupVoipSignal(userId) {
-  const SIGNAL_URL = `ws://10.140.147.47:8080?user=${encodeURIComponent(userId)}`;
-
-  if (ws && (ws.readyState === 0 || ws.readyState === 1)) {
-    console.log("⚙️ Already connected or connecting...");
+  if (!userId) {
+    console.error("❌ setupVoipSignal called with EMPTY userId");
     return;
   }
 
+  const SIGNAL_URL = `ws://${SIGNAL_HOST}:${SIGNAL_PORT}/?user=${userId}`;
+
+  // If already open/connecting, ignore
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) {
+    console.log("⚙️ WS already connected or connecting...");
+    return;
+  }
+
+  console.log("🔗 Connecting WS:", SIGNAL_URL);
+
   try {
     ws = new WebSocket(SIGNAL_URL);
-  } catch (err) {
-    console.error("❌ WebSocket creation failed:", err.message);
+  } catch (e) {
+    console.error("❌ Could not create WebSocket:", e.message);
     scheduleReconnect(userId);
     return;
   }
 
   ws.onopen = () => {
-    console.log(`📡 Connected as ${userId}`);
+    console.log(`📡 WS connected as: ${userId}`);
     retryCount = 0;
     startHeartbeat();
+  };
+
+  ws.onerror = (err) => {
+    console.warn("⚠️ WS Error:", err.message || err);
+  };
+
+  ws.onclose = () => {
+    console.warn("🔌 WS closed");
+    stopHeartbeat();
+    scheduleReconnect(userId);
   };
 
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
 
-      // Pong response
+      // Handle heartbeat
       if (data.type === "pong") {
         lastPong = Date.now();
         return;
@@ -51,94 +73,78 @@ export function setupVoipSignal(userId) {
 
       switch (data.event) {
         // -----------------------------
-        // INCOMING CALL FROM SIGNAL SERVER
+        // 📞 Someone is calling you
         // -----------------------------
         case "incoming_call":
-          handleIncomingSignaling(data);
+          handleIncoming(data);
           break;
 
         // -----------------------------
-        // CALL ACCEPTED BY REMOTE USER
+        // 🎯 CASP session ready
         // -----------------------------
-        case "call_accepted":
-          console.log(`📞 Call accepted by ${data.by}`);
+        case "call_ready":
+          console.log("🎯 call_ready received:", data);
+
           navigate("VoiceCallScreen", {
             ws_url: data.ws_url,
-            peer: data.by,
+            peer: data.by,  // who accepted
           });
+
           resetIncomingFlags();
           break;
 
         // -----------------------------
-        // CALL REJECTED
+        // ❌ Caller rejected
         // -----------------------------
         case "call_rejected":
           console.log(`❌ Call rejected by ${data.by}`);
-          if (isIncomingUiShown) navigate("Main");
+
+          if (isIncomingUiShown) {
+            navigate("Main");
+          }
+
           resetIncomingFlags();
           break;
 
-        // -----------------------------
-        // CALL READY → NAVIGATE TO CALL UI
-        // -----------------------------
-        case "call_ready":
-          console.log("🎯 Call ready → navigating to call UI");
-          navigate("VoiceCallScreen", {
-            ws_url: data.ws_url,
-            peer: data.by || "AI",
-          });
-          resetIncomingFlags();
-          break;
-
+        // Fallback for anything else
         default:
-          console.log("📨 Unhandled signaling event:", data);
+          console.log("📨 Unhandled message:", data);
       }
     } catch (err) {
-      console.error("⚠️ Signaling parse error:", err);
+      console.error("⚠️ WS parse error:", err);
     }
-  };
-
-  ws.onerror = (err) => {
-    console.warn("⚠️ Signal WS error:", err?.message || err);
-  };
-
-  ws.onclose = () => {
-    console.warn("🔌 Signal disconnected");
-    stopHeartbeat();
-    scheduleReconnect(userId);
   };
 }
 
 // -------------------------------
-// HANDLE INCOMING CALL UI ENTRY
+// Handle Incoming Call
 // -------------------------------
-function handleIncomingSignaling(data) {
+function handleIncoming(data) {
   console.log("📞 Incoming call from:", data.from);
 
   activeCallId = uuid.v4();
   activeCaller = data.from;
+  isIncomingUiShown = true;
 
   if (AppState.currentState === "active") {
-    isIncomingUiShown = true;
     navigate("IncomingCallScreen", {
       callId: activeCallId,
       caller: data.from,
-      ws_url: data.ws_url,
     });
   } else {
-    // Background → your Firebase notification should trigger UI automatically
-    console.log("📱 App in background → FCM should wake UI");
+    console.log("📱 App is background → Notification should handle UI");
   }
 }
 
 // -------------------------------
-// RECONNECT / HEARTBEAT
+// Reconnect Logic
 // -------------------------------
 function scheduleReconnect(userId) {
   if (reconnectTimer) return;
 
   const delay = Math.min(30000, 1000 * Math.pow(2, retryCount++));
-  console.log(`🔁 Reconnecting in ${Math.round(delay / 1000)}s`);
+
+  console.log(`🔁 WS reconnect in ${delay / 1000}s`);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -146,14 +152,19 @@ function scheduleReconnect(userId) {
   }, delay);
 }
 
+// -------------------------------
+// Heartbeat — Keeps Connection Alive
+// -------------------------------
 function startHeartbeat() {
   stopHeartbeat();
   heartbeat = setInterval(() => {
-    if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: "ping" }));
-    if (Date.now() - lastPong > 30000) {
-      console.warn("⏱️ No pong in 30s → reconnecting...");
-      ws.close();
+    if (ws?.readyState === 1) {
+      ws.send(JSON.stringify({ type: "ping" }));
+
+      if (Date.now() - lastPong > 30000) {
+        console.log("⏱️ No pong → reconnect");
+        ws.close();
+      }
     }
   }, 10000);
 }
@@ -164,18 +175,18 @@ function stopHeartbeat() {
 }
 
 // -------------------------------
-// SEND SIGNAL TO SERVER
+// Public: Send signal to server
 // -------------------------------
 export function sendSignal(data) {
   if (ws?.readyState === 1) {
     ws.send(JSON.stringify(data));
   } else {
-    console.warn("⚠️ Tried sending signal but socket not ready:", data);
+    console.warn("⚠️ WS not ready:", data);
   }
 }
 
 // -------------------------------
-// RESET INCOMING UI FLAGS
+// Reset incoming call UI flags
 // -------------------------------
 function resetIncomingFlags() {
   isIncomingUiShown = false;

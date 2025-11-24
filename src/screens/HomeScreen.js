@@ -1,299 +1,364 @@
-import React, { useState, useRef, useEffect } from "react";
+// src/screens/HomeScreen.js
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
+  StyleSheet,
   ScrollView,
   ActivityIndicator,
-  StyleSheet,
+  Modal,
+  Pressable,
 } from "react-native";
 import Feather from "react-native-vector-icons/Feather";
-import MaterialIcons from "react-native-vector-icons/MaterialIcons";
-import Ionicons from "react-native-vector-icons/Ionicons";
-import Icon from "react-native-vector-icons/FontAwesome";
-import { useDispatch, useSelector } from "react-redux";
 import Toast from "react-native-toast-message";
-import http from "../services/http";
-import { logout } from "../store/slices/adminSlice";
+import { useSelector, useDispatch } from "react-redux";
 
-const suggestions = [
-  "Get me the status for today",
-  "Send an email to Johny saying I am busy",
-  "Write a report to Gaurav Vasista",
-];
+import {
+  getIntegrations,
+  getDriveConfigs,
+  getQnaConfigs,
+  getBotConfigs,
+  qnaQuery,
+  setAuthToken,
+  setXResource,
+} from "../services/api";
 
-export default function HomeScreen({ navigation, route }) {
+import {
+  setResource,
+  setConfNames,
+  setSelectedModel,
+  setSearchData,
+  selectResource,
+  selectSelectedModel,
+  selectConfNames,
+} from "../store/slices/searchSlice";
+
+export default function HomeScreen({ navigation }) {
   const dispatch = useDispatch();
-  const { token, resource } = useSelector((state) => state.admin);
+
+  const storeResource = useSelector(selectResource);
+  const storeModel = useSelector(selectSelectedModel);
+  const confNames = useSelector(selectConfNames);
+
+  const admin = useSelector((s) => s.admin);
+  const token = admin?.token;
+  const workspaceResource = admin?.resource;
+
+  const [localResource, setLocalResource] = useState(
+    workspaceResource || storeResource
+  );
+
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState("");
+  const [selectedModel, setSelectedModelLocal] = useState(
+    storeModel || "Gemini-2.0"
+  );
+  const [selectedTime] = useState("60 Days");
   const [loading, setLoading] = useState(false);
-  const scrollViewRef = useRef();
+  const [loadingConfigs, setLoadingConfigs] = useState(false);
 
-  // 🔁 Clear chat when coming from Drawer “New Chat”
+  const [showConfPicker, setShowConfPicker] = useState(false);
+  const [activeConf, setActiveConf] = useState("Select");
+
+  const searchState = useSelector((s) => s.search);
+
   useEffect(() => {
-    if (route.params?.resetChat) {
-      setQuery("");
-      setResponse("");
-      Toast.show({ type: "info", text1: "Started a new chat session" });
-      navigation.setParams({ resetChat: false });
-    }
-  }, [route.params]);
+    setAuthToken(token);
 
-  // 🚀 Send user query to backend
-  const handleSend = async (text) => {
-    const prompt = text || query.trim();
+    if (workspaceResource) {
+      setXResource(workspaceResource);
+      dispatch(setResource(workspaceResource));
+      setLocalResource(workspaceResource);
+      dispatch(setConfNames([workspaceResource]));
+    }
+  }, [token, workspaceResource, dispatch]);
+
+  useEffect(() => {
+    if (!searchState.searchData) {
+      setQuery("");
+      setSelectedModelLocal("Gemini-2.0");
+    }
+  }, [searchState.searchData]);
+
+  useEffect(() => {
+    const loadConfigs = async () => {
+      if (!localResource) return;
+
+      setLoadingConfigs(true);
+      try {
+        const [integrations, drive, qna, bot] = await Promise.allSettled([
+          getIntegrations(localResource),
+          getDriveConfigs(localResource),
+          getQnaConfigs(localResource),
+          getBotConfigs(localResource),
+        ]);
+
+        const confSet = new Set();
+
+        const pushConf = (arr) => {
+          if (!Array.isArray(arr)) return;
+          arr.forEach((item) => {
+            if (item?.conf_name) confSet.add(item.conf_name);
+          });
+        };
+
+        if (integrations.value?.data) pushConf(integrations.value.data);
+        if (drive.value?.data) pushConf(drive.value.data);
+        if (qna.value?.data) pushConf(qna.value.data);
+        if (bot.value?.data) pushConf(bot.value.data);
+
+        if (confSet.size === 0) confSet.add(localResource);
+
+        const finalList = [...confSet];
+
+        dispatch(setConfNames(finalList));
+
+        if (activeConf === "Select") {
+          setActiveConf(finalList[0]);
+        }
+      } catch (err) {
+        console.warn("CONFIG ERROR:", err);
+      } finally {
+        setLoadingConfigs(false);
+      }
+    };
+
+    loadConfigs();
+  }, [localResource]);
+
+  // BUILD PAYLOAD
+  const buildPayload = (text) => ({
+    query: text,
+    titles_only: false,
+    web_search: false,
+    timePeriod: "60 Days",
+    search_folder: [],
+    selected_files: [],
+    allitems: [],
+    conf_names: activeConf ? [activeConf] : [],
+    audioFile: null,
+    llm: selectedModel,
+  });
+
+  // CREATE SESSION
+  const createSession = async () => {
+    const prompt = query.trim();
     if (!prompt) return;
 
     setLoading(true);
-    setResponse("");
+
+    const payload = buildPayload(prompt);
+    dispatch(setSearchData(payload));
+    dispatch(setSelectedModel(selectedModel));
+
+    console.log("🔥 FINAL PAYLOAD:", payload);
 
     try {
-      if (!token) {
-        Toast.show({ type: "error", text1: "Session expired, please log in again" });
-        setResponse("⚠️ Session expired. Please log in again.");
-        dispatch(logout());
+      setAuthToken(token);
+      setXResource(localResource);
+
+      const res = await qnaQuery(localResource, payload);
+
+      console.log("🔥 RAW RESPONSE:", res.data);
+
+      // CASE 1: array with chat_session_id
+      if (Array.isArray(res.data) && res.data.length) {
+        const first = res.data[0];
+        if (first.chat_session_id) {
+          navigation.navigate("ChatScreen", {
+            sessionId: first.chat_session_id,
+            configId: activeConf,
+            initialSearchData: payload,
+          });
+          setQuery("");
+          return;
+        }
+      }
+
+      // CASE 2: object with session_id
+      if (res.data?.session_id) {
+        navigation.navigate("ChatScreen", {
+          sessionId: res.data.session_id,
+          configId: activeConf,
+          initialSearchData: payload,
+        });
+        setQuery("");
         return;
       }
 
-      console.log("TOKEN CHECK:", token);
-      console.log("RESOURCE CHECK:", resource);
-
-      const { data } = await http.post(`/test/${resource}/qna_query`, { query: prompt });
-
-      const aiResponse =
-        data?.reply ||
-        data?.answer ||
-        data?.response ||
-        data?.message ||
-        "🤖 How can I help you today?";
-
-      setResponse(aiResponse);
+      Toast.show({
+        type: "error",
+        text1: "Backend did not return chat_session_id",
+      });
     } catch (err) {
-      console.error("AI Query failed:", err);
-      if (err.response?.status === 401) {
-        dispatch(logout());
-        Toast.show({ type: "error", text1: "Unauthorized", text2: "Please log in again" });
-        setResponse("🚫 Unauthorized. Please log in again.");
-      } else if (err.message?.includes("Network")) {
-        setResponse("🌐 Network error. Please check your connection.");
-      } else {
-        const msg = err?.response?.data?.detail || "❌ Failed to get a response from AI.";
-        setResponse(msg);
-      }
+      console.log("CHAT ERROR:", err);
+      Toast.show({ type: "error", text1: "Error creating chat" });
     } finally {
       setLoading(false);
-      setQuery("");
     }
   };
 
-  // Auto scroll to bottom on new messages
-  useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [response, loading]);
+  // SUGGESTION CLICK
+  const onSuggestionPress = (text) => {
+    setQuery(text);
+    setTimeout(() => {
+      createSession();
+    }, 50);
+  };
 
   return (
     <View style={styles.container}>
-      {/* HEADER BAR */}
-      <View style={styles.headerBar}>
+      {/* HEADER */}
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.openDrawer()}>
-          <Feather name="menu" size={22} color="#fff" />
+          <Feather name="menu" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <View style={styles.headerRight}>
-          <View style={styles.smallBadge}>
-            <Ionicons name="logo-react" color="#3b82f6" size={14} />
-            <Text style={styles.badgeText}>01</Text>
+        <TouchableOpacity
+          onPress={() => setShowConfPicker(true)}
+          style={styles.confBtn}
+        >
+          <Feather name="chevron-down" size={16} color="#fff" />
+          <Text style={styles.confText}>{activeConf}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.navigate("Account")}>
+          <Feather name="settings" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* MODAL */}
+      <Modal visible={showConfPicker} transparent animationType="fade">
+        <Pressable
+          onPress={() => setShowConfPicker(false)}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalBox}>
+            {confNames.map((name, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.modalItem}
+                onPress={() => {
+                  setActiveConf(name);
+                  dispatch(setConfNames([name]));
+                  setShowConfPicker(false);
+                }}
+              >
+                <Text style={styles.modalItemText}>{name}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <TouchableOpacity>
-            <Feather name="download" size={18} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.trainButton}>
-            <Text style={styles.trainText}>Train</Text>
+        </Pressable>
+      </Modal>
+
+      <ScrollView>
+        <Text style={styles.title}>How can I help you?</Text>
+
+        {/* INPUT BOX */}
+        <View style={styles.inputBox}>
+          <TextInput
+            placeholder="Type your query..."
+            placeholderTextColor="#777"
+            style={styles.input}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={createSession}
+          />
+
+          <TouchableOpacity onPress={createSession} style={styles.iconBox}>
+            <Feather name="send" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* TITLE */}
-      <Text style={styles.title}>How can I help you?</Text>
+        {/* SUGGESTIONS */}
+        <View style={styles.suggestions}>
+          {[
+            "Get me the status for today",
+            "Send an email to Johny saying I am busy",
+            "Write a report to Gaurav Vasistha about the Marketing leads",
+          ].map((text, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.suggestionItem}
+              onPress={() => onSuggestionPress(text)}
+            >
+              <Text style={styles.suggestionText}>{text}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* CHAT INPUT BOX */}
-      <View style={styles.inputBox}>
-        <TouchableOpacity>
-          <Feather name="grid" size={18} color="#999" />
-        </TouchableOpacity>
-
-        <TextInput
-          placeholder="Type your query....."
-          placeholderTextColor="#666"
-          value={query}
-          onChangeText={setQuery}
-          style={styles.input}
-          onSubmitEditing={() => handleSend()}
-        />
-
-        <TouchableOpacity>
-          <MaterialIcons name="text-fields" size={18} color="#999" />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => handleSend()} style={{ marginLeft: 10 }}>
-          <Ionicons name="mic-outline" size={20} color="#3b82f6" />
-        </TouchableOpacity>
-      </View>
-
-      {/* RESPONSE AREA */}
-      <ScrollView
-        ref={scrollViewRef}
-        style={{ flex: 1, marginTop: 20 }}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-      >
+        {/* LOADING */}
         {loading && (
-          <ActivityIndicator color="#3b82f6" size="large" style={{ marginTop: 20 }} />
-        )}
-        {response ? (
-          <View style={styles.responseBox}>
-            <Text style={styles.responseText}>{response}</Text>
+          <View style={styles.loaderView}>
+            <ActivityIndicator color="#3b82f6" size="large" />
+            <Text style={{ color: "#fff" }}>Creating chat...</Text>
           </View>
-        ) : null}
+        )}
       </ScrollView>
 
-      {/* TALK WITH AI SECTION */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate("TalkWithAI")}
-        style={styles.aiButtonContainer}
-      >
-        <Ionicons name="chatbubbles-outline" size={18} color="#fff" />
-        <Text style={styles.aiButtonText}>Talk With AI</Text>
-        <MaterialIcons name="keyboard-arrow-right" size={18} color="#fff" />
-      </TouchableOpacity>
-
-      {/* SUGGESTIONS */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.suggestionScroll}
-      >
-        {suggestions.map((text, idx) => (
-          <TouchableOpacity
-            key={idx}
-            onPress={() => handleSend(text)}
-            style={styles.suggestionItem}
-          >
-            {idx === 0 && <Icon name="calendar-check-o" size={16} color="#fff" />}
-            {idx === 1 && <MaterialIcons name="email" size={16} color="#fff" />}
-            {idx === 2 && <Ionicons name="paper-plane" size={16} color="#fff" />}
-            <Text style={styles.suggestionText}>{text}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* FLOATING CASPAI BUTTON */}
-      <TouchableOpacity style={styles.floatingButton}>
-        <Text style={styles.floatingText}>CaspAI</Text>
-        <Ionicons name="briefcase" size={18} color="#fff" />
-      </TouchableOpacity>
+      <Toast />
     </View>
   );
 }
 
+// STYLES
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", paddingHorizontal: 24, paddingTop: 56 },
-  headerBar: {
+  container: { flex: 1, backgroundColor: "#000", paddingTop: 52, paddingHorizontal: 20 },
+  header: { flexDirection: "row", justifyContent: "space-between" },
+  confBtn: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 48,
-  },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  smallBadge: {
-    flexDirection: "row",
-    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeText: { color: "#fff", fontSize: 12, marginLeft: 4 },
-  trainButton: {
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  trainText: { color: "#fff", fontSize: 12 },
-  title: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  inputBox: {
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  input: { flex: 1, color: "#fff", fontSize: 16, paddingHorizontal: 10 },
-  responseBox: {
-    marginTop: 12,
-    backgroundColor: "#111",
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#333",
   },
-  responseText: { color: "#fff", fontSize: 15, lineHeight: 20 },
-  aiButtonContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  confText: { color: "#fff", marginLeft: 6 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 10,
-  },
-  aiButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginHorizontal: 6,
-  },
-  suggestionScroll: { marginTop: 16, paddingBottom: 10 },
-  suggestionItem: {
-    flexDirection: "row",
     alignItems: "center",
+  },
+  modalBox: {
+    width: "80%",
     backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#333",
+    padding: 20,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 10,
+    borderColor: "#333",
+    borderWidth: 1,
   },
-  suggestionText: { color: "#fff", fontSize: 14, marginLeft: 8 },
-  floatingButton: {
-    position: "absolute",
-    bottom: 40,
-    right: 24,
-    backgroundColor: "#2563eb",
-    borderRadius: 50,
+  modalItem: {
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: "#222",
+  },
+  modalItemText: { color: "#fff" },
+  title: { color: "#fff", fontSize: 24, fontWeight: "800", marginVertical: 25 },
+  inputBox: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#111",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#333",
   },
-  floatingText: { color: "#fff", fontWeight: "600", marginRight: 8 },
+  input: { flex: 1, color: "#fff", fontSize: 16 },
+  iconBox: { padding: 8, backgroundColor: "#333", borderRadius: 8 },
+  suggestions: { marginTop: 20 },
+  suggestionItem: {
+    padding: 12,
+    backgroundColor: "#111",
+    borderRadius: 10,
+    borderColor: "#333",
+    borderWidth: 1,
+    marginBottom: 10,
+  },
+  suggestionText: { color: "#ccc" },
+  loaderView: { marginTop: 20, alignItems: "center" },
 });
+
